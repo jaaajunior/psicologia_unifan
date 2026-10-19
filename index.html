@@ -80,12 +80,13 @@ input[type=file]{position:absolute;opacity:0;width:0;height:0}
       <button class="primary" id="recBtn">Gravar saída</button>
       <p class="hint" id="recMsg">Grava o resultado já encaixado (1080p, sem áudio) e baixa o arquivo ao terminar.</p>
     </div>
-    <p class="hint" id="hint">Cantos: arraste os pontos. Lados: arraste o quadrado branco ou a linha (Shift = só para dentro/fora). Mover: arraste dentro da forma.</p>
+    <p class="hint" id="hint">Cantos: arraste os pontos. Lados: arraste o quadrado branco ou a linha (Shift = só para dentro/fora). Mover: arraste dentro da forma. Círculo ↻ = gira livremente (Shift = de 15 em 15°).</p>
   </aside>
 </main>
 <script>
 const $=id=>document.getElementById(id);
 const pv=$('pv'),pc=pv.getContext('2d');
+let PAD=40,Wo=640,Ho=360;
 let media=[],layers=[],sel=-1,win=null,oc=null,aspect=16/9,grid=false,drag=null,uid=0,cubeN=0,sound=false;
 const mById=id=>media.find(m=>m.id===id);
 const dim=el=>({w:el.videoWidth||el.naturalWidth||0,h:el.videoHeight||el.naturalHeight||0});
@@ -97,13 +98,16 @@ function xf(pts,o){
   const r=(((o.r||0)%4)+4)%4;for(let i=0;i<r;i++)a.push(a.shift());
   return a;
 }
-const quads=L=>L.kind==='cube'?L.f.map(f=>({m:f.m,p:xf(f.idx.map(i=>L.v[i]),f)})):[{m:L.m,p:xf(L.q,L)}];
+const quads=L=>L.kind==='cube'?L.f.map(f=>({m:f.m,ang:f.ang||0,p:xf(f.idx.map(i=>L.v[i]),f)})):[{m:L.m,ang:0,p:xf(L.q,L)}];
 const cur=()=>layers[sel];
 
 function sizePreview(){
-  let w=$('stage').clientWidth||600,h=w/aspect;const mh=Math.max(240,innerHeight*0.72);
+  const w0=$('stage').clientWidth||600;
+  PAD=Math.max(30,Math.min(110,Math.round(w0*0.09)));
+  let w=w0-2*PAD,h=w/aspect;const mh=Math.max(280,innerHeight*0.74)-2*PAD;
   if(h>mh){h=mh;w=h*aspect}
-  pv.width=Math.round(w);pv.height=Math.round(h);pv.style.width=w+'px';pv.style.height=h+'px';
+  Wo=Math.round(w);Ho=Math.round(h);
+  pv.width=Wo+2*PAD;pv.height=Ho+2*PAD;pv.style.width=pv.width+'px';pv.style.height=pv.height+'px';
 }
 function homog(p){
   const [x0,y0,x1,y1,x2,y2,x3,y3]=[p[0].x,p[0].y,p[1].x,p[1].y,p[2].x,p[2].y,p[3].x,p[3].y];
@@ -125,19 +129,21 @@ function tri(c,img,s0,s1,s2,d0,d1,d2){
   [d0,d1,d2].forEach((p,i)=>{const X=cx+(p.x-cx)*k,Y=cy+(p.y-cy)*k;i?c.lineTo(X,Y):c.moveTo(X,Y)});
   c.closePath();c.clip();c.transform(m11,m21,m12,m22,tx,ty);c.drawImage(img,0,0);c.restore();
 }
-function drawQuad(c,el,pts,W,H,op){
+function drawQuad(c,el,pts,W,H,op,ang){
   const d=dim(el);if(!d.w)return;
   const f=homog(pts.map(p=>({x:p.x*W,y:p.y*H}))),N=8;
+  const rad=(ang||0)*Math.PI/180,co=Math.cos(rad),si=Math.sin(rad),k=Math.abs(co)+Math.abs(si);
+  const uv=(u,v)=>{const x=(u-.5)/k,y=(v-.5)/k;return{x:(.5+x*co-y*si)*d.w,y:(.5+x*si+y*co)*d.h}};
   c.save();c.globalAlpha=op;
   for(let i=0;i<N;i++)for(let j=0;j<N;j++){
     const a=i/N,b=(i+1)/N,e=j/N,g=(j+1)/N;
     const Q=[f(a,e),f(b,e),f(b,g),f(a,g)];
-    const S=[[a,e],[b,e],[b,g],[a,g]].map(q=>({x:q[0]*d.w,y:q[1]*d.h}));
+    const S=[[a,e],[b,e],[b,g],[a,g]].map(q=>uv(q[0],q[1]));
     tri(c,el,S[0],S[1],S[2],Q[0],Q[1],Q[2]);tri(c,el,S[0],S[2],S[3],Q[0],Q[2],Q[3]);
   }
   c.restore();
 }
-function drawLayer(c,L,W,H){quads(L).forEach(q=>{const m=mById(q.m);if(m)drawQuad(c,m.el,q.p,W,H,L.op)})}
+function drawLayer(c,L,W,H){quads(L).forEach(q=>{const m=mById(q.m);if(m)drawQuad(c,m.el,q.p,W,H,L.op,q.ang)})}
 function drawGrid(c,W,H){
   c.save();c.strokeStyle='#fff';c.lineWidth=1;c.globalAlpha=.55;c.beginPath();
   for(let i=0;i<=16;i++){c.moveTo(W*i/16,0);c.lineTo(W*i/16,H)}
@@ -145,9 +151,13 @@ function drawGrid(c,W,H){
   c.stroke();c.lineWidth=3;c.globalAlpha=1;c.strokeRect(1.5,1.5,W-3,H-3);c.restore();
 }
 function render(){
-  const W=pv.width,H=pv.height;
+  const W=Wo,H=Ho;
+  pc.setTransform(1,0,0,1,0,0);pc.fillStyle='#0b0c0e';pc.fillRect(0,0,Wo,Ho);
+  pc.save();pc.translate(PAD,PAD);
   pc.fillStyle='#000';pc.fillRect(0,0,W,H);
   layers.forEach(L=>drawLayer(pc,L,W,H));
+  pc.fillStyle='rgba(11,12,14,.72)';pc.beginPath();pc.rect(-PAD,-PAD,Wo,Ho);pc.rect(0,0,W,H);pc.fill('evenodd');
+  pc.save();pc.strokeStyle='rgba(255,255,255,.55)';pc.setLineDash([6,4]);pc.lineWidth=1;pc.strokeRect(.5,.5,W-1,H-1);pc.restore();
   if(grid)drawGrid(pc,W,H);
   layers.forEach((L,i)=>{
     const on=i===sel;
@@ -166,9 +176,17 @@ function render(){
       const v=P(L);
       edgesOf(L).forEach(([i,j])=>{const mx=(v[i].x+v[j].x)/2*W,my=(v[i].y+v[j].y)/2*H;pc.fillStyle='#fff';pc.strokeStyle='#14161a';pc.lineWidth=1.5;pc.fillRect(mx-5,my-5,10,10);pc.strokeRect(mx-5,my-5,10,10)});
       pc.fillStyle='#f2b84b';v.forEach(p=>{pc.beginPath();pc.arc(p.x*W,p.y*H,7,0,7);pc.fill()});
+      const ri=rotInfo(L,W,H);
+      pc.strokeStyle='#f2b84b';pc.lineWidth=1.5;pc.beginPath();pc.moveTo(ri.pt.x*W,ri.pt.y*H);pc.lineTo(ri.hx,ri.hy);pc.stroke();
+      pc.fillStyle='#14161a';pc.beginPath();pc.arc(ri.hx,ri.hy,11,0,7);pc.fill();pc.stroke();
+      pc.fillStyle='#f2b84b';pc.font='bold 15px sans-serif';pc.textAlign='center';pc.fillText('↻',ri.hx,ri.hy+5);
     }
     pc.restore();
   });
+  pc.restore();
+  drawOut();
+}
+function drawOut(){
   if(win&&!win.closed&&oc){
     const c=oc.getContext('2d');c.fillStyle='#000';c.fillRect(0,0,oc.width,oc.height);
     layers.forEach(L=>drawLayer(c,L,oc.width,oc.height));
@@ -207,7 +225,9 @@ async function startRec(){
   }catch(err){rec=null;rc=null;$('recBtn').textContent='Gravar saída';alert('Não foi possível iniciar a gravação neste navegador.')}
 }
 function stopRec(){if(rec&&rec.state==='recording')rec.stop()}
-(function tick(){
+let lastF=0;
+function frame(){
+  const t=performance.now();if(t-lastF<12)return;lastF=t;
   const playing=media.some(m=>m.video&&!m.el.paused&&!m.el.ended),recording=rec&&rec.state==='recording';
   if(playing||recording)render();
   if(recording){
@@ -215,8 +235,8 @@ function stopRec(){if(rec&&rec.state==='recording')rec.stop()}
     $('recMsg').textContent='Gravando… '+Math.max(0,Math.ceil((recEnd-performance.now())/1000))+' s restantes. Mantenha esta aba visível.';
     if(performance.now()>=recEnd)stopRec();
   }
-  requestAnimationFrame(tick);
-})();
+}
+(function tick(){frame();requestAnimationFrame(tick)})();
 
 function openOut(){
   if(win&&!win.closed){win.focus();return}
@@ -230,6 +250,8 @@ function openOut(){
   win.addEventListener('resize',fit);d.addEventListener('dblclick',fs);
   d.addEventListener('keydown',e=>{if(e.key==='f'||e.key==='F')fs()});
   fit();
+  const loop=()=>{if(!win||win.closed)return;frame();win.requestAnimationFrame(loop)};
+  win.requestAnimationFrame(loop);
 }
 setInterval(()=>{if(win&&win.closed){win=null;oc=null}},1000);
 
@@ -276,7 +298,7 @@ function ui(){
     $('op').value=Math.round(L.op*100);$('opv').textContent=$('op').value+'%';
     const cube=L.kind==='cube';
     $('full').hidden=cube;$('xfRow').hidden=cube;$('rst').textContent=cube?'Restaurar caixa':'Desfazer distorção';
-    $('hint').textContent=cube?'Caixa: arraste os pontos (cantos) ou os quadrados brancos (lados inteiros). Shift no lado = desliza só para dentro/fora.':'Cantos: arraste os pontos. Lados: arraste o quadrado branco ou a linha (Shift = só para dentro/fora). Mover: arraste dentro da forma.';
+    $('hint').textContent=cube?'Caixa: arraste os pontos (cantos) ou os quadrados brancos (lados inteiros). Shift no lado = desliza só para dentro/fora. Círculo ↻ = gira tudo. Em cada face, use o controle Giro para girar o vídeo livremente.':'Cantos: arraste os pontos. Lados: arraste o quadrado branco ou a linha (Shift = só para dentro/fora). Mover: arraste dentro da forma. Círculo ↻ = gira livremente (Shift = de 15 em 15°).';
     if(cube){
       fillSelect($('allSel'));
       const rows=$('faceRows');rows.innerHTML='';
@@ -291,6 +313,12 @@ function ui(){
           mk('↔','Espelhar na horizontal',()=>{f.fx=!f.fx;render()}),
           mk('↕','Inverter na vertical',()=>{f.fy=!f.fy;render()}));
         rows.appendChild(r);
+        const g=document.createElement('div');g.className='face';g.style.gridTemplateColumns='62px minmax(0,1fr) 44px';
+        const gl=document.createElement('span');gl.textContent='Giro';
+        const gi=document.createElement('input');gi.type='range';gi.min=0;gi.max=359;gi.value=f.ang||0;
+        const gv=document.createElement('span');gv.textContent=(f.ang||0)+'°';
+        gi.oninput=()=>{f.ang=+gi.value;gv.textContent=gi.value+'°';render()};
+        g.append(gl,gi,gv);rows.appendChild(g);
       });
     }
   }
@@ -304,15 +332,24 @@ function segDist(p,a,b,W,H){
   let t=l2?((px-ax)*dx+(py-ay)*dy)/l2:0;t=Math.max(0,Math.min(1,t));
   return Math.hypot(px-(ax+t*dx),py-(ay+t*dy));
 }
-function pos(e){const r=pv.getBoundingClientRect();return{x:(e.clientX-r.left)/r.width,y:(e.clientY-r.top)/r.height}}
+function rotInfo(L,W,H){
+  const a=P(L),c=centroid(a),pt=L.kind==='cube'?a[1]:{x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2};
+  const dx=(pt.x-c.x)*W,dy=(pt.y-c.y)*H,l=Math.hypot(dx,dy)||1;
+  return{c,pt,hx:pt.x*W+dx/l*36,hy:pt.y*H+dy/l*36};
+}
+function pos(e){const r=pv.getBoundingClientRect();return{x:(e.clientX-r.left-PAD)/Wo,y:(e.clientY-r.top-PAD)/Ho}}
 function inPoly(q,p){let r=false;for(let i=0,j=q.length-1;i<q.length;j=i++){if((q[i].y>p.y)!==(q[j].y>p.y)&&p.x<(q[j].x-q[i].x)*(p.y-q[i].y)/(q[j].y-q[i].y)+q[i].x)r=!r}return r}
 pv.addEventListener('pointerdown',e=>{
   const p=pos(e);pv.setPointerCapture(e.pointerId);
   if(sel>=0){
     const a=P(cur());
-    for(let i=0;i<a.length;i++){if(Math.hypot((a[i].x-p.x)*pv.width,(a[i].y-p.y)*pv.height)<18){drag={t:'c',i};return}}
+    const ri=rotInfo(cur(),Wo,Ho);
+    if(Math.hypot(ri.hx-p.x*Wo,ri.hy-p.y*Ho)<16){
+      drag={t:'r',c:ri.c,a0:Math.atan2((p.y-ri.c.y)*Ho,(p.x-ri.c.x)*Wo),o:a.map(q=>({...q}))};return;
+    }
+    for(let i=0;i<a.length;i++){if(Math.hypot((a[i].x-p.x)*Wo,(a[i].y-p.y)*Ho)<18){drag={t:'c',i};return}}
     let best=null,bd=14;
-    edgesOf(cur()).forEach(([i,j])=>{const d=segDist(p,a[i],a[j],pv.width,pv.height);if(d<bd){bd=d;best=[i,j]}});
+    edgesOf(cur()).forEach(([i,j])=>{const d=segDist(p,a[i],a[j],Wo,Ho);if(d<bd){bd=d;best=[i,j]}});
     if(best){drag={t:'e',p,i:best[0],j:best[1],oi:{...a[best[0]]},oj:{...a[best[1]]},shift:e.shiftKey};return}
   }
   for(let i=layers.length-1;i>=0;i--){
@@ -323,10 +360,17 @@ pv.addEventListener('pointerdown',e=>{
 pv.addEventListener('pointermove',e=>{
   if(!drag)return;const p=pos(e),a=P(cur());
   if(drag.t==='c'){a[drag.i].x=p.x;a[drag.i].y=p.y}
+  else if(drag.t==='r'){
+    const W=Wo,H=Ho;
+    let d=Math.atan2((p.y-drag.c.y)*H,(p.x-drag.c.x)*W)-drag.a0;
+    if(e.shiftKey){const st=Math.PI/12;d=Math.round(d/st)*st}
+    const co=Math.cos(d),si=Math.sin(d);
+    a.forEach((q,k)=>{const x=(drag.o[k].x-drag.c.x)*W,y=(drag.o[k].y-drag.c.y)*H;q.x=drag.c.x+(x*co-y*si)/W;q.y=drag.c.y+(x*si+y*co)/H});
+  }
   else if(drag.t==='e'){
     let dx=p.x-drag.p.x,dy=p.y-drag.p.y;
     if(e.shiftKey){ // só perpendicular à aresta (desliza o lado mantendo a direção)
-      const W=pv.width,H=pv.height,ex=(drag.oj.x-drag.oi.x)*W,ey=(drag.oj.y-drag.oi.y)*H,l=Math.hypot(ex,ey)||1;
+      const W=Wo,H=Ho,ex=(drag.oj.x-drag.oi.x)*W,ey=(drag.oj.y-drag.oi.y)*H,l=Math.hypot(ex,ey)||1;
       const nx=-ey/l,ny=ex/l,k=dx*W*nx+dy*H*ny;dx=k*nx/W;dy=k*ny/H;
     }
     a[drag.i].x=drag.oi.x+dx;a[drag.i].y=drag.oi.y+dy;a[drag.j].x=drag.oj.x+dx;a[drag.j].y=drag.oj.y+dy;
