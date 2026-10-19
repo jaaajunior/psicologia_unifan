@@ -30,7 +30,7 @@ button:focus-visible,label.btn:focus-within,input:focus-visible,select:focus-vis
 .ctl{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--line);padding-top:12px}
 .ctl[hidden]{display:none}
 .ctl label{display:flex;justify-content:space-between;color:var(--mute);font-size:13px}
-.face{display:grid;grid-template-columns:62px minmax(0,1fr) auto;gap:6px;align-items:center;font-size:13px}
+.face{display:grid;grid-template-columns:62px minmax(0,1fr) auto auto auto;gap:6px;align-items:center;font-size:13px}
 input[type=range]{width:100%;accent-color:var(--acc)}
 input[type=checkbox]{accent-color:var(--acc)}
 input[type=number]{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:4px 6px;width:64px}
@@ -54,22 +54,23 @@ input[type=file]{position:absolute;opacity:0;width:0;height:0}
     </div>
     <button id="grid">Grade de teste</button>
     <div class="list" id="list"></div>
- 
+
     <div class="ctl" id="ctl" hidden>
       <label>Opacidade <span id="opv">100%</span></label>
       <input type="range" id="op" min="0" max="100" value="100">
       <div class="row"><button id="sm">Menor</button><button id="bg">Maior</button></div>
+      <div class="row" id="xfRow"><button id="rot" title="Girar 90°">↻ Girar</button><button id="flx" title="Espelhar na horizontal">↔ Espelhar</button><button id="fly" title="Espelhar na vertical">↕ Inverter</button></div>
       <div class="row"><button id="ctr">Centralizar</button><button id="full">Tela cheia</button></div>
       <div class="row"><button id="rst">Desfazer distorção</button><button id="top">Para frente</button></div>
       <button id="del">Excluir</button>
     </div>
- 
+
     <div class="ctl" id="faces" hidden>
       <div class="face"><span>Todas</span><select id="allSel"></select><span></span></div>
       <div id="faceRows" style="display:flex;flex-direction:column;gap:8px"></div>
-      <p class="hint">Use ↻ para girar a mídia em uma face.</p>
+      <p class="hint">Em cada face: ↻ gira 90°, ↔ espelha, ↕ inverte de cima para baixo.</p>
     </div>
- 
+
     <div class="ctl" id="vid" hidden>
       <div class="row"><button id="pp">Pausar vídeos</button><button id="rs">Reiniciar</button></div>
       <label style="justify-content:flex-start;gap:8px;color:var(--ink)"><input type="checkbox" id="snd"> Som (sai pelo computador)</label>
@@ -79,7 +80,7 @@ input[type=file]{position:absolute;opacity:0;width:0;height:0}
       <button class="primary" id="recBtn">Gravar saída</button>
       <p class="hint" id="recMsg">Grava o resultado já encaixado (1080p, sem áudio) e baixa o arquivo ao terminar.</p>
     </div>
-    <p class="hint" id="hint">Cantos: arraste os pontos. Mover: arraste dentro da forma.</p>
+    <p class="hint" id="hint">Cantos: arraste os pontos. Lados: arraste o quadrado branco ou a linha (Shift = só para dentro/fora). Mover: arraste dentro da forma.</p>
   </aside>
 </main>
 <script>
@@ -89,9 +90,16 @@ let media=[],layers=[],sel=-1,win=null,oc=null,aspect=16/9,grid=false,drag=null,
 const mById=id=>media.find(m=>m.id===id);
 const dim=el=>({w:el.videoWidth||el.naturalWidth||0,h:el.videoHeight||el.naturalHeight||0});
 const P=L=>L.kind==='cube'?L.v:L.q;
-const quads=L=>L.kind==='cube'?L.f.map(f=>({m:f.m,p:f.idx.map(i=>L.v[i])})):[{m:L.m,p:L.q}];
+function xf(pts,o){
+  let a=pts.slice();
+  if(o.fx)a=[a[1],a[0],a[3],a[2]];
+  if(o.fy)a=[a[3],a[2],a[1],a[0]];
+  const r=(((o.r||0)%4)+4)%4;for(let i=0;i<r;i++)a.push(a.shift());
+  return a;
+}
+const quads=L=>L.kind==='cube'?L.f.map(f=>({m:f.m,p:xf(f.idx.map(i=>L.v[i]),f)})):[{m:L.m,p:xf(L.q,L)}];
 const cur=()=>layers[sel];
- 
+
 function sizePreview(){
   let w=$('stage').clientWidth||600,h=w/aspect;const mh=Math.max(240,innerHeight*0.72);
   if(h>mh){h=mh;w=h*aspect}
@@ -154,7 +162,11 @@ function render(){
         pc.fillStyle='#fff';pc.fillText(L.f[k].n,cx,cy+4);
       }
     });
-    if(on){pc.fillStyle='#f2b84b';P(L).forEach(p=>{pc.beginPath();pc.arc(p.x*W,p.y*H,7,0,7);pc.fill()})}
+    if(on){
+      const v=P(L);
+      edgesOf(L).forEach(([i,j])=>{const mx=(v[i].x+v[j].x)/2*W,my=(v[i].y+v[j].y)/2*H;pc.fillStyle='#fff';pc.strokeStyle='#14161a';pc.lineWidth=1.5;pc.fillRect(mx-5,my-5,10,10);pc.strokeRect(mx-5,my-5,10,10)});
+      pc.fillStyle='#f2b84b';v.forEach(p=>{pc.beginPath();pc.arc(p.x*W,p.y*H,7,0,7);pc.fill()});
+    }
     pc.restore();
   });
   if(win&&!win.closed&&oc){
@@ -205,7 +217,7 @@ function stopRec(){if(rec&&rec.state==='recording')rec.stop()}
   }
   requestAnimationFrame(tick);
 })();
- 
+
 function openOut(){
   if(win&&!win.closed){win.focus();return}
   win=window.open('','saida_projetor','popup,width=960,height=540');
@@ -220,7 +232,7 @@ function openOut(){
   fit();
 }
 setInterval(()=>{if(win&&win.closed){win=null;oc=null}},1000);
- 
+
 function rect(cx,cy,w,h){return[{x:cx-w/2,y:cy-h/2},{x:cx+w/2,y:cy-h/2},{x:cx+w/2,y:cy+h/2},{x:cx-w/2,y:cy+h/2}]}
 function fitRect(el,w){const d=dim(el);let h=w*aspect*d.h/d.w;if(h>.9){w*=.9/h;h=.9}return rect(.5,.5,w,h)}
 function cubeDefault(){
@@ -263,8 +275,8 @@ function ui(){
   if(L){
     $('op').value=Math.round(L.op*100);$('opv').textContent=$('op').value+'%';
     const cube=L.kind==='cube';
-    $('full').hidden=cube;$('rst').textContent=cube?'Restaurar caixa':'Desfazer distorção';
-    $('hint').textContent=cube?'Caixa: 7 pontos compartilhados entre as 3 faces. Arraste o ponto central e as pontas até encaixar.':'Cantos: arraste os pontos. Mover: arraste dentro da forma.';
+    $('full').hidden=cube;$('xfRow').hidden=cube;$('rst').textContent=cube?'Restaurar caixa':'Desfazer distorção';
+    $('hint').textContent=cube?'Caixa: arraste os pontos (cantos) ou os quadrados brancos (lados inteiros). Shift no lado = desliza só para dentro/fora.':'Cantos: arraste os pontos. Lados: arraste o quadrado branco ou a linha (Shift = só para dentro/fora). Mover: arraste dentro da forma.';
     if(cube){
       fillSelect($('allSel'));
       const rows=$('faceRows');rows.innerHTML='';
@@ -273,16 +285,25 @@ function ui(){
         const t=document.createElement('span');t.textContent=f.n;
         const s=document.createElement('select');fillSelect(s,f.m);
         s.onchange=()=>{f.m=s.value?+s.value:null;render()};
-        const b=document.createElement('button');b.textContent='↻';b.title='Girar mídia 90°';
-        b.onclick=()=>{f.idx.push(f.idx.shift());render()};
-        r.append(t,s,b);rows.appendChild(r);
+        const mk=(txt,tt,fn)=>{const b=document.createElement('button');b.textContent=txt;b.title=tt;b.style.padding='8px 8px';b.onclick=fn;return b};
+        r.append(t,s,
+          mk('↻','Girar mídia 90°',()=>{f.r=((f.r||0)+1)%4;render()}),
+          mk('↔','Espelhar na horizontal',()=>{f.fx=!f.fx;render()}),
+          mk('↕','Inverter na vertical',()=>{f.fy=!f.fy;render()}));
+        rows.appendChild(r);
       });
     }
   }
 }
 function centroid(a){return{x:a.reduce((s,p)=>s+p.x,0)/a.length,y:a.reduce((s,p)=>s+p.y,0)/a.length}}
 function scaleBy(k){const a=P(cur()),c=centroid(a);a.forEach(p=>{p.x=c.x+(p.x-c.x)*k;p.y=c.y+(p.y-c.y)*k});render()}
- 
+
+const edgesOf=L=>L.kind==='cube'?[[1,2],[2,3],[3,4],[4,5],[5,6],[6,1],[0,2],[0,4],[0,6]]:[[0,1],[1,2],[2,3],[3,0]];
+function segDist(p,a,b,W,H){
+  const px=p.x*W,py=p.y*H,ax=a.x*W,ay=a.y*H,bx=b.x*W,by=b.y*H,dx=bx-ax,dy=by-ay,l2=dx*dx+dy*dy;
+  let t=l2?((px-ax)*dx+(py-ay)*dy)/l2:0;t=Math.max(0,Math.min(1,t));
+  return Math.hypot(px-(ax+t*dx),py-(ay+t*dy));
+}
 function pos(e){const r=pv.getBoundingClientRect();return{x:(e.clientX-r.left)/r.width,y:(e.clientY-r.top)/r.height}}
 function inPoly(q,p){let r=false;for(let i=0,j=q.length-1;i<q.length;j=i++){if((q[i].y>p.y)!==(q[j].y>p.y)&&p.x<(q[j].x-q[i].x)*(p.y-q[i].y)/(q[j].y-q[i].y)+q[i].x)r=!r}return r}
 pv.addEventListener('pointerdown',e=>{
@@ -290,6 +311,9 @@ pv.addEventListener('pointerdown',e=>{
   if(sel>=0){
     const a=P(cur());
     for(let i=0;i<a.length;i++){if(Math.hypot((a[i].x-p.x)*pv.width,(a[i].y-p.y)*pv.height)<18){drag={t:'c',i};return}}
+    let best=null,bd=14;
+    edgesOf(cur()).forEach(([i,j])=>{const d=segDist(p,a[i],a[j],pv.width,pv.height);if(d<bd){bd=d;best=[i,j]}});
+    if(best){drag={t:'e',p,i:best[0],j:best[1],oi:{...a[best[0]]},oj:{...a[best[1]]},shift:e.shiftKey};return}
   }
   for(let i=layers.length-1;i>=0;i--){
     if(quads(layers[i]).some(q=>inPoly(q.p,p))){sel=i;drag={t:'m',p,o:P(layers[i]).map(q=>({...q}))};ui();render();return}
@@ -299,12 +323,20 @@ pv.addEventListener('pointerdown',e=>{
 pv.addEventListener('pointermove',e=>{
   if(!drag)return;const p=pos(e),a=P(cur());
   if(drag.t==='c'){a[drag.i].x=p.x;a[drag.i].y=p.y}
+  else if(drag.t==='e'){
+    let dx=p.x-drag.p.x,dy=p.y-drag.p.y;
+    if(e.shiftKey){ // só perpendicular à aresta (desliza o lado mantendo a direção)
+      const W=pv.width,H=pv.height,ex=(drag.oj.x-drag.oi.x)*W,ey=(drag.oj.y-drag.oi.y)*H,l=Math.hypot(ex,ey)||1;
+      const nx=-ey/l,ny=ex/l,k=dx*W*nx+dy*H*ny;dx=k*nx/W;dy=k*ny/H;
+    }
+    a[drag.i].x=drag.oi.x+dx;a[drag.i].y=drag.oi.y+dy;a[drag.j].x=drag.oj.x+dx;a[drag.j].y=drag.oj.y+dy;
+  }
   else{const dx=p.x-drag.p.x,dy=p.y-drag.p.y;a.forEach((q,k)=>{q.x=drag.o[k].x+dx;q.y=drag.o[k].y+dy})}
   render();
 });
 pv.addEventListener('pointerup',()=>{drag=null});
 ['dragover','drop'].forEach(n=>$('stage').addEventListener(n,e=>{e.preventDefault();if(n==='drop')addFiles(e.dataTransfer.files)}));
- 
+
 $('openOut').onclick=openOut;
 $('file').onchange=e=>{addFiles(e.target.files);e.target.value=''};
 $('grid').onclick=()=>{grid=!grid;render()};
@@ -316,6 +348,9 @@ $('addCube').onclick=()=>{
 };
 $('allSel').onchange=e=>{const v=e.target.value?+e.target.value:null;cur().f.forEach(f=>f.m=v);ui();render()};
 $('op').oninput=e=>{cur().op=e.target.value/100;$('opv').textContent=e.target.value+'%';render()};
+$('rot').onclick=()=>{const L=cur();L.r=((L.r||0)+1)%4;render()};
+$('flx').onclick=()=>{const L=cur();L.fx=!L.fx;render()};
+$('fly').onclick=()=>{const L=cur();L.fy=!L.fy;render()};
 $('sm').onclick=()=>scaleBy(.92);$('bg').onclick=()=>scaleBy(1.08);
 $('ctr').onclick=()=>{const a=P(cur()),c=centroid(a);a.forEach(p=>{p.x+=.5-c.x;p.y+=.5-c.y});render()};
 $('full').onclick=()=>{cur().q=[{x:0,y:0},{x:1,y:0},{x:1,y:1},{x:0,y:1}];render()};
@@ -340,4 +375,3 @@ sizePreview();render();ui();
 </script>
 </body>
 </html>
- 
