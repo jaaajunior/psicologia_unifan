@@ -53,6 +53,7 @@ input[type=file]{position:absolute;opacity:0;width:0;height:0}
       <button id="addCube">Adicionar caixa</button>
     </div>
     <button id="grid">Grade de teste</button>
+    <div class="ctl" style="border:0;padding-top:0;gap:4px"><label>Zoom da área de trabalho <span id="zv">100%</span></label><input type="range" id="zoom" min="35" max="100" value="100"></div>
     <div class="list" id="list"></div>
 
     <div class="ctl" id="ctl" hidden>
@@ -86,7 +87,7 @@ input[type=file]{position:absolute;opacity:0;width:0;height:0}
 <script>
 const $=id=>document.getElementById(id);
 const pv=$('pv'),pc=pv.getContext('2d');
-let PAD=40,Wo=640,Ho=360;
+let PADX=60,PADY=40,Wo=640,Ho=360;
 let media=[],layers=[],sel=-1,win=null,oc=null,aspect=16/9,grid=false,drag=null,uid=0,cubeN=0,sound=false;
 const mById=id=>media.find(m=>m.id===id);
 const dim=el=>({w:el.videoWidth||el.naturalWidth||0,h:el.videoHeight||el.naturalHeight||0});
@@ -102,12 +103,14 @@ const quads=L=>L.kind==='cube'?L.f.map(f=>({m:f.m,ang:f.ang||0,p:xf(f.idx.map(i=
 const cur=()=>layers[sel];
 
 function sizePreview(){
-  const w0=$('stage').clientWidth||600;
-  PAD=Math.max(30,Math.min(110,Math.round(w0*0.09)));
-  let w=w0-2*PAD,h=w/aspect;const mh=Math.max(280,innerHeight*0.74)-2*PAD;
-  if(h>mh){h=mh;w=h*aspect}
-  Wo=Math.round(w);Ho=Math.round(h);
-  pv.width=Wo+2*PAD;pv.height=Ho+2*PAD;pv.style.width=pv.width+'px';pv.style.height=pv.height+'px';
+  const z=(+$('zoom').value||100)/100,f=z/1.6;
+  const VW=Math.max(280,$('stage').clientWidth||600),mh=Math.max(300,innerHeight*0.78);
+  const VH=Math.round(Math.max(260,Math.min(mh,VW*0.62)));
+  let w=VW*f,h=w/aspect;
+  if(h>VH*f){h=VH*f;w=h*aspect}
+  Wo=Math.max(40,Math.round(w));Ho=Math.max(24,Math.round(h));
+  PADX=Math.max(0,Math.round((VW-Wo)/2));PADY=Math.max(0,Math.round((VH-Ho)/2));
+  pv.width=Wo+2*PADX;pv.height=Ho+2*PADY;pv.style.width=pv.width+'px';pv.style.height=pv.height+'px';
 }
 function homog(p){
   const [x0,y0,x1,y1,x2,y2,x3,y3]=[p[0].x,p[0].y,p[1].x,p[1].y,p[2].x,p[2].y,p[3].x,p[3].y];
@@ -152,11 +155,11 @@ function drawGrid(c,W,H){
 }
 function render(){
   const W=Wo,H=Ho;
-  pc.setTransform(1,0,0,1,0,0);pc.fillStyle='#0b0c0e';pc.fillRect(0,0,Wo,Ho);
-  pc.save();pc.translate(PAD,PAD);
+  pc.setTransform(1,0,0,1,0,0);pc.fillStyle='#0b0c0e';pc.fillRect(0,0,pv.width,pv.height);
+  pc.save();pc.translate(PADX,PADY);
   pc.fillStyle='#000';pc.fillRect(0,0,W,H);
   layers.forEach(L=>drawLayer(pc,L,W,H));
-  pc.fillStyle='rgba(11,12,14,.72)';pc.beginPath();pc.rect(-PAD,-PAD,Wo,Ho);pc.rect(0,0,W,H);pc.fill('evenodd');
+  pc.fillStyle='rgba(11,12,14,.72)';pc.beginPath();pc.rect(-PADX,-PADY,pv.width,pv.height);pc.rect(0,0,W,H);pc.fill('evenodd');
   pc.save();pc.strokeStyle='rgba(255,255,255,.55)';pc.setLineDash([6,4]);pc.lineWidth=1;pc.strokeRect(.5,.5,W-1,H-1);pc.restore();
   if(grid)drawGrid(pc,W,H);
   layers.forEach((L,i)=>{
@@ -202,7 +205,8 @@ async function startRec(){
   if(rec)return;
   if(typeof MediaRecorder==='undefined'||!HTMLCanvasElement.prototype.captureStream){alert('Este navegador não suporta gravação. Use o Chrome ou o Edge.');return}
   rec={pending:true};
-  rc=document.createElement('canvas');rc.width=1920;rc.height=Math.round(1920/aspect/2)*2;
+  rc=document.createElement('canvas');const ev2=n=>Math.max(2,Math.round(n/2)*2);
+  if(aspect>=1){rc.width=1920;rc.height=ev2(1920/aspect)}else{rc.height=1920;rc.width=ev2(1920*aspect)}
   media.filter(m=>m.video).forEach(m=>{m.el.currentTime=0;m.el.play().catch(()=>{})});
   $('recBtn').textContent='Preparando…';
   await new Promise(r=>setTimeout(r,400));
@@ -215,8 +219,10 @@ async function startRec(){
     r.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};
     r.onstop=()=>{
       const ext=type.startsWith('video/mp4')?'mp4':'webm';
+      const blob=new Blob(chunks,{type:type||'video/webm'});
+      if(!blob.size){rec=null;rc=null;$('recBtn').textContent='Gravar saída';$('recMsg').textContent='A gravação saiu vazia. Tente de novo com a aba visível.';return}
       const a=document.createElement('a');
-      a.href=URL.createObjectURL(new Blob(chunks,{type:type||'video/webm'}));a.download='caixa-de-pandora.'+ext;
+      a.href=URL.createObjectURL(blob);a.download='caixa-de-pandora.'+ext;
       document.body.appendChild(a);a.click();a.remove();
       rec=null;rc=null;$('recBtn').textContent='Gravar saída';$('recMsg').textContent='Gravação concluída: arquivo '+ext.toUpperCase()+' baixado.';
     };
@@ -245,7 +251,14 @@ function openOut(){
   const d=win.document;d.title='Saída do projetor';
   d.body.style.cssText='margin:0;background:#000;overflow:hidden;cursor:none';
   oc=d.createElement('canvas');oc.style.display='block';d.body.appendChild(oc);
-  const fit=()=>{oc.width=win.innerWidth;oc.height=win.innerHeight;aspect=oc.width/oc.height;sizePreview();render()};
+  const fit=()=>{
+    const w=Math.max(2,win.innerWidth),h=Math.max(2,win.innerHeight);
+    const na=w/h,k=aspect/na;
+    if(Math.abs(k-1)>1e-4){ // mantém a proporção das formas quando a janela muda de formato
+      layers.forEach(L=>P(L).forEach(p=>{p.x=.5+(p.x-.5)*k}));
+    }
+    oc.width=w;oc.height=h;aspect=na;sizePreview();render();
+  };
   const fs=()=>d.fullscreenElement?d.exitFullscreen():d.documentElement.requestFullscreen();
   win.addEventListener('resize',fit);d.addEventListener('dblclick',fs);
   d.addEventListener('keydown',e=>{if(e.key==='f'||e.key==='F')fs()});
@@ -337,7 +350,7 @@ function rotInfo(L,W,H){
   const dx=(pt.x-c.x)*W,dy=(pt.y-c.y)*H,l=Math.hypot(dx,dy)||1;
   return{c,pt,hx:pt.x*W+dx/l*36,hy:pt.y*H+dy/l*36};
 }
-function pos(e){const r=pv.getBoundingClientRect();return{x:(e.clientX-r.left-PAD)/Wo,y:(e.clientY-r.top-PAD)/Ho}}
+function pos(e){const r=pv.getBoundingClientRect();return{x:(e.clientX-r.left-PADX)/Wo,y:(e.clientY-r.top-PADY)/Ho}}
 function inPoly(q,p){let r=false;for(let i=0,j=q.length-1;i<q.length;j=i++){if((q[i].y>p.y)!==(q[j].y>p.y)&&p.x<(q[j].x-q[i].x)*(p.y-q[i].y)/(q[j].y-q[i].y)+q[i].x)r=!r}return r}
 pv.addEventListener('pointerdown',e=>{
   const p=pos(e);pv.setPointerCapture(e.pointerId);
@@ -381,6 +394,7 @@ pv.addEventListener('pointermove',e=>{
 pv.addEventListener('pointerup',()=>{drag=null});
 ['dragover','drop'].forEach(n=>$('stage').addEventListener(n,e=>{e.preventDefault();if(n==='drop')addFiles(e.dataTransfer.files)}));
 
+$('zoom').oninput=e=>{$('zv').textContent=e.target.value+'%';sizePreview();render()};
 $('openOut').onclick=openOut;
 $('file').onchange=e=>{addFiles(e.target.files);e.target.value=''};
 $('grid').onclick=()=>{grid=!grid;render()};
