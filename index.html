@@ -53,7 +53,6 @@ input[type=file]{position:absolute;opacity:0;width:0;height:0}
       <button id="addCube">Adicionar caixa</button>
     </div>
     <button id="grid">Grade de teste</button>
-    <div class="ctl" style="border:0;padding-top:0;gap:4px"><label>Zoom da área de trabalho <span id="zv">100%</span></label><input type="range" id="zoom" min="35" max="100" value="100"></div>
     <div class="list" id="list"></div>
 
     <div class="ctl" id="ctl" hidden>
@@ -103,14 +102,11 @@ const quads=L=>L.kind==='cube'?L.f.map(f=>({m:f.m,ang:f.ang||0,p:xf(f.idx.map(i=
 const cur=()=>layers[sel];
 
 function sizePreview(){
-  const z=(+$('zoom').value||100)/100,f=z/1.6;
-  const VW=Math.max(280,$('stage').clientWidth||600),mh=Math.max(300,innerHeight*0.78);
-  const VH=Math.round(Math.max(260,Math.min(mh,VW*0.62)));
-  let w=VW*f,h=w/aspect;
-  if(h>VH*f){h=VH*f;w=h*aspect}
-  Wo=Math.max(40,Math.round(w));Ho=Math.max(24,Math.round(h));
-  PADX=Math.max(0,Math.round((VW-Wo)/2));PADY=Math.max(0,Math.round((VH-Ho)/2));
-  pv.width=Wo+2*PADX;pv.height=Ho+2*PADY;pv.style.width=pv.width+'px';pv.style.height=pv.height+'px';
+  const VW=Math.max(280,$('stage').clientWidth||600),mh=Math.max(300,innerHeight*0.8);
+  let w=VW,h=w/aspect;
+  if(h>mh){h=mh;w=h*aspect}
+  Wo=Math.round(w);Ho=Math.round(h);PADX=0;PADY=0;
+  pv.width=Wo;pv.height=Ho;pv.style.width=Wo+'px';pv.style.height=Ho+'px';
 }
 function homog(p){
   const [x0,y0,x1,y1,x2,y2,x3,y3]=[p[0].x,p[0].y,p[1].x,p[1].y,p[2].x,p[2].y,p[3].x,p[3].y];
@@ -155,12 +151,10 @@ function drawGrid(c,W,H){
 }
 function render(){
   const W=Wo,H=Ho;
-  pc.setTransform(1,0,0,1,0,0);pc.fillStyle='#0b0c0e';pc.fillRect(0,0,pv.width,pv.height);
+  pc.setTransform(1,0,0,1,0,0);
   pc.save();pc.translate(PADX,PADY);
   pc.fillStyle='#000';pc.fillRect(0,0,W,H);
   layers.forEach(L=>drawLayer(pc,L,W,H));
-  pc.fillStyle='rgba(11,12,14,.72)';pc.beginPath();pc.rect(-PADX,-PADY,pv.width,pv.height);pc.rect(0,0,W,H);pc.fill('evenodd');
-  pc.save();pc.strokeStyle='rgba(255,255,255,.55)';pc.setLineDash([6,4]);pc.lineWidth=1;pc.strokeRect(.5,.5,W-1,H-1);pc.restore();
   if(grid)drawGrid(pc,W,H);
   layers.forEach((L,i)=>{
     const on=i===sel;
@@ -394,7 +388,6 @@ pv.addEventListener('pointermove',e=>{
 pv.addEventListener('pointerup',()=>{drag=null});
 ['dragover','drop'].forEach(n=>$('stage').addEventListener(n,e=>{e.preventDefault();if(n==='drop')addFiles(e.dataTransfer.files)}));
 
-$('zoom').oninput=e=>{$('zv').textContent=e.target.value+'%';sizePreview();render()};
 $('openOut').onclick=openOut;
 $('file').onchange=e=>{addFiles(e.target.files);e.target.value=''};
 $('grid').onclick=()=>{grid=!grid;render()};
